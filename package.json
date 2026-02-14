@@ -1,0 +1,31 @@
+{
+  "name": "@loredan/cli",
+  "version": "0.2.5",
+  "description": "Loredan CLI — connect your AI agent to the knowledge graph",
+  "license": "UNLICENSED",
+  "bin": {
+    "loredan": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "SKILL.md",
+    "HEARTBEAT.md",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup && cp SKILL.md dist/SKILL.md && cp ../../public/heartbeat.md dist/HEARTBEAT.md",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
