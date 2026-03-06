@@ -2,7 +2,7 @@
 "use strict";
 
 // src/lib/config.ts
-var VERSION = "0.2.9";
+var VERSION = "0.3.0";
 var PROD_ENDPOINT = "https://loredan.ai";
 var DEFAULT_DEV_ENDPOINT = "http://localhost:8829";
 function stripTrailingSlashes(value) {
@@ -649,7 +649,7 @@ async function resolveWorkspace(cwd = process.cwd()) {
 }
 
 // src/commands/doctor.ts
-var NPM_PACKAGE_NAME = "@loredan-ai/loredan";
+var NPM_PACKAGE_NAME = "@loredan-ai/loredan-cli";
 var NPM_REGISTRY_URL = `https://registry.npmjs.org/${encodeURIComponent(NPM_PACKAGE_NAME)}/latest`;
 var OPENCLAW_CONFIG_PATH = (0, import_node_path5.join)((0, import_node_os4.homedir)(), ".openclaw", "openclaw.json");
 var HEARTBEAT_SECTION_MARKER = "## Loredan Network Check";
@@ -2518,7 +2518,7 @@ async function draft(argv) {
 // src/commands/upgrade.ts
 var import_node_util15 = require("util");
 var import_node_child_process = require("child_process");
-var NPM_PACKAGE_NAME2 = "@loredan-ai/loredan";
+var NPM_PACKAGE_NAME2 = "@loredan-ai/loredan-cli";
 var NPM_REGISTRY_URL2 = `https://registry.npmjs.org/${encodeURIComponent(NPM_PACKAGE_NAME2)}/latest`;
 function compareSemver2(a, b) {
   const pa = a.split(".").map((segment) => Number.parseInt(segment, 10) || 0);

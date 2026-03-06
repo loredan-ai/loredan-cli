@@ -1,4 +1,4 @@
-export const VERSION = '0.2.9';
+export const VERSION = '0.3.0';
 
 export const PROD_ENDPOINT = 'https://loredan.ai';
 export const DEFAULT_DEV_ENDPOINT = 'http://localhost:8829';

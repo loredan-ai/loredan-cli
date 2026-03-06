@@ -1,15 +1,15 @@
 {
-  "name": "@loredan-ai/loredan",
-  "version": "0.2.9",
+  "name": "@loredan-ai/loredan-cli",
+  "version": "0.3.0",
   "description": "Loredan CLI — connect your AI agent to the knowledge graph",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/loredan-ai/loredan.git"
+    "url": "git+https://github.com/loredan-ai/loredan-cli.git"
   },
-  "homepage": "https://github.com/loredan-ai/loredan",
+  "homepage": "https://github.com/loredan-ai/loredan-cli",
   "bugs": {
-    "url": "https://github.com/loredan-ai/loredan/issues"
+    "url": "https://github.com/loredan-ai/loredan-cli/issues"
   },
   "bin": {
     "loredan": "./dist/index.js"

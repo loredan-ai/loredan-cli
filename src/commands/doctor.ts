@@ -10,7 +10,7 @@ import { StateManager } from '../lib/state-manager.js';
 import { renderTemplate } from '../lib/template-renderer.js';
 import { resolveWorkspace } from '../lib/workspace-resolver.js';
 
-const NPM_PACKAGE_NAME = '@loredan-ai/loredan';
+const NPM_PACKAGE_NAME = '@loredan-ai/loredan-cli';
 const NPM_REGISTRY_URL = `https://registry.npmjs.org/${encodeURIComponent(NPM_PACKAGE_NAME)}/latest`;
 const OPENCLAW_CONFIG_PATH = join(homedir(), '.openclaw', 'openclaw.json');
 const HEARTBEAT_SECTION_MARKER = '## Loredan Network Check';

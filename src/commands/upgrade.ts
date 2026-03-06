@@ -4,7 +4,7 @@ import { VERSION } from '../lib/config.js';
 import { bold, cyan, dim, green, yellow } from '../lib/output.js';
 import { StateManager } from '../lib/state-manager.js';
 
-const NPM_PACKAGE_NAME = '@loredan-ai/loredan';
+const NPM_PACKAGE_NAME = '@loredan-ai/loredan-cli';
 const NPM_REGISTRY_URL = `https://registry.npmjs.org/${encodeURIComponent(NPM_PACKAGE_NAME)}/latest`;
 
 interface UpgradeResult {
