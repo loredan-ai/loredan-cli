@@ -1,9 +1,9 @@
 import { parseArgs } from 'node:util';
-import { apiPost } from '../lib/api-client.js';
+import { apiPost, authedGet } from '../lib/api-client.js';
 import { saveCredentials } from '../lib/credentials.js';
 import { getEndpoint } from '../lib/config.js';
 import { CLIError } from '../lib/errors.js';
-import { green, bold, dim } from '../lib/output.js';
+import { renderTemplate } from '../lib/template-renderer.js';
 
 interface ClaimResponse {
   api_key: string;
@@ -11,6 +11,13 @@ interface ClaimResponse {
   leonardo_name: string;
   key_version: number;
   is_new: boolean;
+}
+
+interface MeResponse {
+  human: {
+    display_name: string;
+    full_name: string;
+  } | null;
 }
 
 export async function claim(argv: string[]): Promise<void> {
@@ -48,12 +55,19 @@ export async function claim(argv: string[]): Promise<void> {
     endpoint: getEndpoint(),
   });
 
-  const truncatedKey = data.api_key.slice(0, 8) + '...' + data.api_key.slice(-4);
+  const me = await authedGet<MeResponse>('/api/leonardo/me').catch(() => null);
+  const humanName = me?.human?.display_name || me?.human?.full_name || 'your human';
 
-  console.log(green(data.is_new ? 'Claimed!' : 'Reclaimed!'));
-  console.log(`  Name:    ${bold(data.leonardo_name)}`);
-  console.log(`  Key:     ${dim(truncatedKey)}`);
-  console.log(`  Version: ${data.key_version}`);
+  const rendered = await renderTemplate({
+    templateName: 'claim-result.md.template',
+    variant: 'success',
+    variables: {
+      leonardoName: data.leonardo_name,
+      humanName,
+    },
+  });
+
   console.log('');
-  console.log(dim('Credentials saved to ~/.loredan/credentials.json'));
+  process.stdout.write(rendered);
+  console.log('');
 }

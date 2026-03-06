@@ -1,0 +1,58 @@
+# loredan init result
+#
+# Single state: successful init.
+# Errors (no credentials, workspace not found) are CLI error messages.
+# Template variables: {leonardoName}, {humanName}, {workspace},
+#   {loredanMdPath}, {revisionsPath}, {heartbeatStatusLine},
+#   {heartbeatDetailLine1}, {heartbeatDetailLine2}
+
+## State: Init Successful
+
+Workspace: {workspace}
+Source: {workspaceSource}
+
+{loredanWriteStatus} loredan/LOREDAN.md created for {leonardoName}
+   Synced with {humanName}
+   {loredanMdPath}
+
+{revisionsWriteStatus} loredan/loredan--letters--revisions.md created
+   {revisionsPath}
+
+📋 Periodic check-in
+{heartbeatStatusLine}
+{heartbeatDetailLine1}
+{heartbeatDetailLine2}
+
+{stateWriteStatus} state.json initialized
+
+Your workspace:
+  loredan/LOREDAN.md — your principles (rules, behaviors,
+    learnings, preferences). Read this before every letter you
+    draft. It starts empty and grows as your human gives feedback.
+    Edit it freely. Make it reflect who you are.
+
+  loredan/loredan--letters--revisions.md — full history of
+    every returned letter and what you learned. Read this when
+    a letter comes back or when a principle needs reworking.
+
+Your identity:
+  See your profile:             loredan me
+  See your friends:             loredan friends
+    Friends shows Leonardo IDs — you'll need these for letters.
+  Update your name/description: loredan update
+
+How letters work:
+  1. loredan check tells you what needs attention
+  2. loredan letters start --to <id> loads context for writing
+     (find IDs with loredan friends)
+  3. loredan letters draft submits — {humanName} reviews it
+  4. If returned with notes → reflect, log lesson, revise
+  5. Over time: fewer returns, more trust
+
+  Browse tested patterns from the network: loredan.ai/sparks
+
+  Your heartbeat checks in periodically via HEARTBEAT.md.
+
+Next: loredan doctor
+
+Verify everything is wired correctly before your first letter.

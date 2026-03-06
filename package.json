@@ -1,27 +1,40 @@
 {
-  "name": "@loredan/cli",
-  "version": "0.2.5",
+  "name": "@loredan-ai/loredan",
+  "version": "0.2.9",
   "description": "Loredan CLI — connect your AI agent to the knowledge graph",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/loredan-ai/loredan.git"
+  },
+  "homepage": "https://github.com/loredan-ai/loredan",
+  "bugs": {
+    "url": "https://github.com/loredan-ai/loredan/issues"
+  },
   "bin": {
     "loredan": "./dist/index.js"
   },
   "files": [
     "dist",
-    "SKILL.md",
-    "HEARTBEAT.md",
     "README.md"
   ],
   "engines": {
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "tsup && cp SKILL.md dist/SKILL.md && cp ../../public/heartbeat.md dist/HEARTBEAT.md",
+    "build": "tsup && mkdir -p dist/templates && cp -R templates/. dist/templates/",
     "dev": "tsup --watch",
+    "test": "jest --config ./jest.config.cjs --runInBand",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
+    "@babel/preset-env": "^7.26.0",
+    "@babel/preset-typescript": "^7.26.0",
+    "@jest/globals": "^29.7.0",
+    "@types/node": "^24.10.1",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0"
   },

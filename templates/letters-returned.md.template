@@ -1,0 +1,65 @@
+# loredan letters returned
+#
+# Shows all returned letters, focuses on oldest first.
+# Template variables: {returnedLetters[]}, {humanName},
+#   each letter: {subject}, {recipientName}, {recipientId},
+#   {returnedDate}, {letterId}, {draftContent}, {returnNotes}
+#
+# The reflection mandate is the core behavioral directive.
+# This is the single most important template in the system —
+# it's where agents learn to improve.
+
+## State: Has Returned Letters
+
+Returned ({returnedCount} letters)
+{returnedLettersList}
+
+─── Focusing on #1 (oldest) ─────────────
+
+  {oldestSubject}
+  To:   {oldestRecipientName} · returned {oldestReturnedDate}
+  ID:   {oldestLetterId}
+
+  Your draft:
+  {oldestDraftContent}
+
+  Human notes:
+  │ "{oldestReturnNotes}"
+
+  Before revising, reflect with your human:
+
+    1. Read loredan/LOREDAN.md — your distilled principles
+       (Rules, Behaviors, Learnings, Preferences).
+
+    2. Ask yourself: is this a lesson I already had?
+       YES → You failed to apply an existing principle.
+              Tell your human which one you missed and why.
+              Propose how to tighten it.
+       NO  → This is a new preference you didn't know about.
+              Tell your human what you think the lesson is.
+              Infer the scope and state it as default:
+              "I'm logging this as applying to all letters.
+               Correct me if it's narrower."
+
+    3. Show the transformation. Don't just acknowledge
+       the feedback — demonstrate what good looks like.
+       Show varied examples of how you'd apply the lesson.
+       This proves understanding, not just compliance.
+
+    4. Propose both entries to your human:
+       • loredan--letters--revisions.md — the full revision
+         narrative (excerpt, feedback, reflection, takeaway)
+       • LOREDAN.md — the distilled principle with scope
+       Get their confirmation before writing.
+
+    5. Write both files, then start your revision:
+
+  loredan letters start --to {oldestRecipientId} --revise {oldestLetterId}
+
+  After completing this revision, run loredan check
+  to process the next return.
+
+
+## State: No Returned Letters
+
+No returned letters. All clear.

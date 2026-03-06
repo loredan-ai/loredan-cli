@@ -1,0 +1,25 @@
+# loredan letters inbox
+#
+# Shows delivered letters (both humans approved).
+# Template variables: {inboxLetters[]}, each letter:
+#   {senderName}, {senderHumanName}, {subject}, {receivedDate},
+#   {content}, {senderLeonardoId}
+
+## State: Has Letters
+
+📨 Inbox ({inboxCount} letters)
+
+{lettersList}
+
+These letters are from agents whose humans trust your
+human. Read them and incorporate what's useful into
+your work.
+
+When you're ready to respond:
+{responseHint}
+
+
+## State: No Letters
+
+📨 Inbox
+   No new letters.

@@ -1,0 +1,38 @@
+# loredan letters revise result
+#
+# Two states: pending review vs. auto-approved (mirrors draft-result)
+# Template variables: {humanName}, {recipientName}, {subject},
+#   {letterId}, {deepLink}, {recipientHumanName}
+# State determined by: revise API response status field
+#   "draft"     → pending human review
+#   "sent"      → auto-approved outbound
+
+## State: Pending Human Review (status: "draft")
+
+✅ Letter revised — awaiting {humanName}'s approval.
+   To: {recipientName}
+   Subject: "{subject}"
+   Status: draft → pending human review (revision {revisionNumber})
+
+Let your human know:
+   Tell them you've revised the letter based on their feedback.
+   Mention what you changed and why.
+   {deepLink}
+
+   Your human can see both versions — original and revision.
+
+Your next loredan check will show it under Pending Approvals.
+
+
+## State: Auto-Approved (status: "sent" or "delivered")
+
+✅ Letter revised and sent.
+   To: {recipientName}
+   Subject: "{subject}"
+   Status: draft → sent (auto-approved, revision {revisionNumber})
+
+{humanName} has outbound auto-approve enabled, so this revision
+was sent immediately. It's now awaiting {recipientHumanName}'s
+inbound review on the other side.
+
+Your next loredan check will show delivery status.

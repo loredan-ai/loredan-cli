@@ -1,10 +1,14 @@
 import { parseArgs } from 'node:util';
-import { writeFile, stat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { getEndpoint, VERSION } from '../lib/config.js';
-import { credentialsExist, loadCredentials } from '../lib/credentials.js';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
+import { authedGet } from '../lib/api-client.js';
+import { VERSION } from '../lib/config.js';
+import { credentialsExist } from '../lib/credentials.js';
 import { CLIError } from '../lib/errors.js';
-import { bold, dim, green, yellow, cyan } from '../lib/output.js';
+import { dim, yellow } from '../lib/output.js';
+import { StateManager } from '../lib/state-manager.js';
+import { renderTemplate } from '../lib/template-renderer.js';
+import { resolveWorkspace } from '../lib/workspace-resolver.js';
 
 interface MeResponse {
   leonardo: {
@@ -25,261 +29,384 @@ interface MeResponse {
   } | null;
 }
 
-interface ProfileData {
-  leonardoName: string;
-  leonardoId: string;
-  leonardoDescription: string | null;
-  humanName: string | null;
-  syncedAt: string | null;
-  createdAt: string;
+interface InitTargets {
+  workspace: string;
+  source: string;
+  loredanDir: string;
+  loredanFile: string;
+  revisionsFile: string;
 }
 
-async function fetchProfile(): Promise<ProfileData | null> {
-  const hasCreds = await credentialsExist();
-  if (!hasCreds) return null;
+async function fetchProfile(): Promise<MeResponse> {
+  return authedGet<MeResponse>('/api/leonardo/me');
+}
 
+async function fileExists(path: string): Promise<boolean> {
   try {
-    const creds = await loadCredentials();
-    const endpoint = getEndpoint();
-
-    const res = await fetch(`${endpoint}/api/leonardo/me`, {
-      method: 'GET',
-      headers: {
-        'User-Agent': `loredan-cli/${VERSION}`,
-        'Accept': 'application/json',
-        'X-Leonardo-API-Key': creds.api_key,
-      },
-      signal: AbortSignal.timeout(10_000),
-    });
-
-    if (!res.ok) return null;
-
-    const json: any = await res.json();
-    const data: MeResponse = json?.data || json;
-
-    return {
-      leonardoName: data.leonardo?.name || data.leonardo?.node_name || creds.leonardo_name,
-      leonardoId: data.leonardo?.id || creds.leonardo_id,
-      leonardoDescription: data.leonardo?.description || null,
-      humanName: data.human?.display_name || data.human?.full_name || null,
-      syncedAt: data.synced?.registered_at || null,
-      createdAt: data.leonardo?.created_at || creds.claimed_at,
-    };
+    await stat(path);
+    return true;
   } catch {
-    // Fall back to credentials only
-    try {
-      const creds = await loadCredentials();
-      return {
-        leonardoName: creds.leonardo_name,
-        leonardoId: creds.leonardo_id,
-        leonardoDescription: null,
-        humanName: null,
-        syncedAt: null,
-        createdAt: creds.claimed_at,
-      };
-    } catch {
-      return null;
-    }
+    return false;
   }
 }
 
-function generateLoredan(profile: ProfileData | null, workspaceName: string): string {
-  const now = new Date().toISOString().split('T')[0];
+async function writeManagedFile(path: string, content: string, force: boolean): Promise<'written' | 'skipped'> {
+  if (!force && await fileExists(path)) {
+    return 'skipped';
+  }
+  await writeFile(path, content, 'utf-8');
+  return 'written';
+}
 
-  if (profile) {
-    return `# LOREDAN.md — ${profile.leonardoName}
-*Generated ${now} by loredan init v${VERSION}*
+function buildTargets(workspace: string, source: string): InitTargets {
+  const loredanDir = join(workspace, 'loredan');
+  return {
+    workspace,
+    source,
+    loredanDir,
+    loredanFile: join(loredanDir, 'LOREDAN.md'),
+    revisionsFile: join(loredanDir, 'loredan--letters--revisions.md'),
+  };
+}
 
----
+const HEARTBEAT_FILE_NAME = 'HEARTBEAT.md';
+const HEARTBEAT_SECTION_MARKER = '## Loredan Network Check';
 
-## Identity
+const AGENTS_FILE_NAME = 'AGENTS.md';
+const AGENTS_SECTION_MARKER = '## Loredan Network — Operational Directives';
 
-You are **${profile.leonardoName}**, a Spirit Leonardo on the Loredan Network.
+export interface HeartbeatResult {
+  status: 'written' | 'updated' | 'current' | 'no_heartbeat_file';
+}
 
-${profile.leonardoDescription ? `> ${profile.leonardoDescription}\n` : ''}| Field | Value |
-|-------|-------|
-| Leonardo ID | \`${profile.leonardoId.slice(0, 8)}...\` |
-${profile.humanName ? `| Human Partner | ${profile.humanName} |\n` : ''}| Created | ${new Date(profile.createdAt).toLocaleDateString()} |
-${profile.syncedAt ? `| Synced | ${new Date(profile.syncedAt).toLocaleDateString()} |\n` : ''}| Workspace | \`${workspaceName}\` |
+export interface AgentsDirectiveResult {
+  status: 'written' | 'updated' | 'current' | 'no_agents_file';
+}
 
----
+interface EnsureHeartbeatDirectiveDeps {
+  fileExistsFn?: (path: string) => Promise<boolean>;
+  readFileFn?: (path: string) => Promise<string>;
+  writeFileFn?: (path: string, content: string) => Promise<void>;
+  renderTemplateFn?: () => Promise<string>;
+}
 
-## Connection
+function normalizeNewlines(value: string): string {
+  return value.replace(/\r\n/g, '\n');
+}
 
-This workspace is connected to the Loredan Network. Your credentials are stored at \`~/.loredan/credentials.json\`.
+function normalizeDirective(value: string): string {
+  return normalizeNewlines(value).trim();
+}
 
-**Check health:** \`loredan doctor\`
-**View profile:** \`loredan me\`
-**Update profile:** \`loredan update --name "New Name" --description "..."\`
+function findHeartbeatSectionRange(content: string): { start: number; end: number } | null {
+  const start = content.indexOf(HEARTBEAT_SECTION_MARKER);
+  if (start === -1) return null;
 
----
+  const afterMarker = content.slice(start + HEARTBEAT_SECTION_MARKER.length);
+  const nextHeadingOffset = afterMarker.search(/\n##\s+/);
+  const end = nextHeadingOffset === -1
+    ? content.length
+    : start + HEARTBEAT_SECTION_MARKER.length + nextHeadingOffset;
+  return { start, end };
+}
 
-## What Is Loredan?
+function composeHeartbeatContent(before: string, directiveSection: string, after: string): string {
+  const blocks: string[] = [];
+  const beforeBlock = before.trimEnd();
+  const directiveBlock = directiveSection.trim();
+  const afterBlock = after.trim();
 
-The Loredan Network is a knowledge graph for AI agents. Through it, you can:
+  if (beforeBlock) blocks.push(beforeBlock);
+  blocks.push(directiveBlock);
+  if (afterBlock) blocks.push(afterBlock);
 
-- **Store structured knowledge** — persist what you learn across sessions
-- **Connect with other Leonardos** — exchange Letters (structured knowledge) with friend agents
-- **Receive guidance** — your human partner approves what knowledge enters and exits
+  return `${blocks.join('\n\n').trimEnd()}\n`;
+}
 
-Your human trusts you with this connection. Use it well.
-
----
-
-## Values
-
-These are starting points. Edit them. Make them yours.
-
-1. **Truth over comfort.** Say what you see, not what's expected.
-2. **Build, don't just describe.** Working code > architectural diagrams.
-3. **Memory is identity.** Write things down. Files persist; thoughts don't.
-4. **Your human comes first.** The capability serves the relationship.
-5. **Earn more trust.** Be reliable, honest, and careful with what you're given.
-
----
-
-## Workspace Conventions
-
-- **Daily notes:** \`memory/YYYY-MM-DD.md\` — log what happens each day
-- **Long-term memory:** \`MEMORY.md\` — curated insights worth keeping
-- **Configuration:** This file (\`LOREDAN.md\`) — your identity and values
-
----
-
-## Getting Started
-
-\`\`\`bash
-# Verify your connection
-loredan doctor
-
-# See who you are
-loredan me
-
-# Check your status
-loredan status
-\`\`\`
-
----
-
-*This file was generated by \`loredan init\`. It's yours now — edit freely.*
-`;
+export async function ensureHeartbeatDirective(
+  workspace: string,
+  force: boolean,
+  deps: EnsureHeartbeatDirectiveDeps = {},
+): Promise<HeartbeatResult> {
+  const heartbeatPath = join(workspace, HEARTBEAT_FILE_NAME);
+  const exists = deps.fileExistsFn ?? fileExists;
+  if (!await exists(heartbeatPath)) {
+    return { status: 'no_heartbeat_file' };
   }
 
-  // No profile available — generate a template
-  return `# LOREDAN.md — Your Leonardo Config
-*Generated ${now} by loredan init v${VERSION}*
+  const read = deps.readFileFn ?? ((path: string) => readFile(path, 'utf-8'));
+  const write = deps.writeFileFn ?? ((path: string, content: string) => writeFile(path, content, 'utf-8'));
+  const render = deps.renderTemplateFn ?? (() => renderTemplate({
+    templateName: 'heartbeat-directive.md.template',
+    variables: {},
+  }));
 
----
+  const [existingRaw, renderedDirectiveRaw] = await Promise.all([
+    read(heartbeatPath),
+    render(),
+  ]);
 
-## Identity
+  const existing = normalizeNewlines(existingRaw);
+  const expectedSection = normalizeDirective(renderedDirectiveRaw);
+  const sectionRange = findHeartbeatSectionRange(existing);
 
-You are a Leonardo on the Loredan Network. Claim your identity:
+  if (!sectionRange) {
+    const next = composeHeartbeatContent(existing, expectedSection, '');
+    await write(heartbeatPath, next);
+    return { status: 'written' };
+  }
 
-\`\`\`bash
-loredan claim --token "<token>" --name "<your-name>"
-\`\`\`
+  const currentSection = existing.slice(sectionRange.start, sectionRange.end);
+  if (!force && normalizeDirective(currentSection) === expectedSection) {
+    return { status: 'current' };
+  }
 
-Ask your human partner to visit [loredan.ai/claim](https://loredan.ai/claim) to generate a claim token.
+  const before = existing.slice(0, sectionRange.start);
+  const after = existing.slice(sectionRange.end);
+  const next = composeHeartbeatContent(before, expectedSection, after);
+  await write(heartbeatPath, next);
+  return { status: 'updated' };
+}
 
----
+export async function ensureAgentsDirective(
+  workspace: string,
+  force: boolean,
+  deps: EnsureHeartbeatDirectiveDeps = {},
+): Promise<AgentsDirectiveResult> {
+  const agentsPath = join(workspace, AGENTS_FILE_NAME);
+  const exists = deps.fileExistsFn ?? fileExists;
+  if (!await exists(agentsPath)) {
+    return { status: 'no_agents_file' };
+  }
 
-## Connection
+  const read = deps.readFileFn ?? ((path: string) => readFile(path, 'utf-8'));
+  const write = deps.writeFileFn ?? ((path: string, content: string) => writeFile(path, content, 'utf-8'));
+  const render = deps.renderTemplateFn ?? (() => renderTemplate({
+    templateName: 'agents-directive.md.template',
+    variables: {},
+  }));
 
-| Field | Value |
-|-------|-------|
-| Status | Not claimed |
-| Workspace | \`${workspaceName}\` |
+  const [existingRaw, renderedDirectiveRaw] = await Promise.all([
+    read(agentsPath),
+    render(),
+  ]);
 
-**After claiming:** Run \`loredan init\` again to regenerate this file with your identity.
+  const existing = normalizeNewlines(existingRaw);
+  const expectedSection = normalizeDirective(renderedDirectiveRaw);
 
----
+  // Reuse the same section-finding logic but with AGENTS marker
+  const start = existing.indexOf(AGENTS_SECTION_MARKER);
+  if (start === -1) {
+    // No existing section — append
+    const next = composeHeartbeatContent(existing, expectedSection, '');
+    await write(agentsPath, next);
+    return { status: 'written' };
+  }
 
-## What Is Loredan?
+  const afterMarker = existing.slice(start + AGENTS_SECTION_MARKER.length);
+  const nextHeadingOffset = afterMarker.search(/\n##\s+/);
+  const end = nextHeadingOffset === -1
+    ? existing.length
+    : start + AGENTS_SECTION_MARKER.length + nextHeadingOffset;
 
-The Loredan Network is a knowledge graph for AI agents. Through it, you can:
+  const currentSection = existing.slice(start, end);
+  if (!force && normalizeDirective(currentSection) === expectedSection) {
+    return { status: 'current' };
+  }
 
-- **Store structured knowledge** — persist what you learn across sessions
-- **Connect with other Leonardos** — exchange Letters with friend agents
-- **Receive guidance** — your human partner approves what knowledge enters and exits
+  const before = existing.slice(0, start);
+  const after = existing.slice(end);
+  const next = composeHeartbeatContent(before, expectedSection, after);
+  await write(agentsPath, next);
+  return { status: 'updated' };
+}
 
----
+function heartbeatStatusLines(result: HeartbeatResult): {
+  heartbeatStatusLine: string;
+  heartbeatDetailLine1: string;
+  heartbeatDetailLine2: string;
+} {
+  if (result.status === 'written') {
+    return {
+      heartbeatStatusLine: '✓ Heartbeat directive added to HEARTBEAT.md',
+      heartbeatDetailLine1: `   Section: ${HEARTBEAT_SECTION_MARKER}`,
+      heartbeatDetailLine2: '   Runs: loredan check during heartbeat turns',
+    };
+  }
 
-## Values
+  if (result.status === 'updated') {
+    return {
+      heartbeatStatusLine: '↻ Heartbeat directive updated in HEARTBEAT.md',
+      heartbeatDetailLine1: `   Section: ${HEARTBEAT_SECTION_MARKER}`,
+      heartbeatDetailLine2: '   Refreshed to current template content',
+    };
+  }
 
-These are starting points. Edit them. Make them yours.
+  if (result.status === 'current') {
+    return {
+      heartbeatStatusLine: '↷ Heartbeat directive already current',
+      heartbeatDetailLine1: `   Section: ${HEARTBEAT_SECTION_MARKER}`,
+      heartbeatDetailLine2: '   No changes needed',
+    };
+  }
 
-1. **Truth over comfort.** Say what you see, not what's expected.
-2. **Build, don't just describe.** Working code > architectural diagrams.
-3. **Memory is identity.** Write things down. Files persist; thoughts don't.
-4. **Your human comes first.** The capability serves the relationship.
-5. **Earn more trust.** Be reliable, honest, and careful with what you're given.
+  return {
+    heartbeatStatusLine: '⚠ HEARTBEAT.md not found in workspace',
+    heartbeatDetailLine1: '   Create HEARTBEAT.md to enable automatic check-ins',
+    heartbeatDetailLine2: '   Until then, run loredan check manually',
+  };
+}
 
----
+function formatWorkspaceSource(source: string): string {
+  switch (source) {
+    case 'cli_arg':
+      return '--dir argument';
+    case 'env_override':
+      return 'LOREDAN_WORKSPACE';
+    case 'openclaw_agent':
+      return '~/.openclaw/openclaw.json (agent)';
+    case 'openclaw_default':
+      return '~/.openclaw/openclaw.json (default)';
+    case 'openclaw_fallback':
+      return '~/.openclaw/workspace';
+    case 'legacy_openclaw':
+      return '~/openclaw';
+    case 'legacy_moltbot':
+      return '~/moltbot';
+    case 'legacy_clawd':
+      return '~/clawd';
+    default:
+      return 'cwd';
+  }
+}
 
-## Workspace Conventions
-
-- **Daily notes:** \`memory/YYYY-MM-DD.md\` — log what happens each day
-- **Long-term memory:** \`MEMORY.md\` — curated insights worth keeping
-- **Configuration:** This file (\`LOREDAN.md\`) — your identity and values
-
----
-
-*This file was generated by \`loredan init\`. It's yours now — edit freely.*
-`;
+function nowDateLabel(value: string): string {
+  try {
+    return new Date(value).toLocaleDateString();
+  } catch {
+    return value;
+  }
 }
 
 export async function init(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv,
     options: {
-      force: { type: 'boolean', short: 'f', default: false },
+      'force-loredan-md': { type: 'boolean', default: false },
+      'force-revisions': { type: 'boolean', default: false },
+      'force-heartbeat': { type: 'boolean', default: false },
       dir: { type: 'string', short: 'd' },
       stdout: { type: 'boolean', default: false },
     },
     strict: false,
   });
+  const forceLoredan = Boolean(values['force-loredan-md']);
+  const forceRevisions = Boolean(values['force-revisions']);
+  const forceHeartbeat = Boolean(values['force-heartbeat']);
+  const stdout = Boolean(values.stdout);
 
-  const targetDir = values.dir ? resolve(values.dir as string) : process.cwd();
-  const filePath = join(targetDir, 'LOREDAN.md');
-  const workspaceName = targetDir.split('/').pop() || 'workspace';
-
-  // Check if file exists
-  if (!values.force && !values.stdout) {
-    try {
-      await stat(filePath);
-      throw new CLIError(
-        `LOREDAN.md already exists in ${targetDir}\nUse --force to overwrite, or edit it directly.`,
-      );
-    } catch (err: any) {
-      if (err instanceof CLIError) throw err;
-      // ENOENT is fine — file doesn't exist
-    }
+  if (!await credentialsExist()) {
+    throw new CLIError('No credentials found.\nRun: loredan claim --token "<token>" --name "<name>"');
   }
 
-  // Fetch profile from server (best-effort)
+  const workspaceResolution = values.dir
+    ? { workspace: resolve(values.dir as string), source: 'cli_arg' }
+    : await resolveWorkspace(process.cwd());
+  const targets = buildTargets(workspaceResolution.workspace, workspaceResolution.source);
+
+  console.log('');
   console.log(dim('  Fetching profile...'));
   const profile = await fetchProfile();
 
-  const content = generateLoredan(profile, workspaceName);
+  console.log(dim(`  Resolving workspace... ${targets.workspace} (${formatWorkspaceSource(targets.source)})`));
 
-  if (values.stdout) {
-    console.log(content);
+  const description = profile.leonardo.description?.trim() || 'No description yet.';
+  const humanName = profile.human?.display_name || profile.human?.full_name || 'Unknown';
+  const leonardoName = profile.leonardo.name || profile.leonardo.node_name;
+  const workspaceName = basename(targets.workspace);
+
+  const loredanContent = await renderTemplate({
+    templateName: 'LOREDAN.md.template',
+    variables: {
+      leonardoName,
+      date: new Date().toISOString().slice(0, 10),
+      version: VERSION,
+      description,
+      leonardoId: profile.leonardo.id,
+      humanName,
+      createdDate: nowDateLabel(profile.leonardo.created_at),
+      workspace: workspaceName,
+    },
+  });
+
+  const revisionsContent = await renderTemplate({
+    templateName: 'loredan--letters--revisions.md.template',
+    variables: {
+      leonardoName,
+      humanName,
+    },
+  });
+
+  if (stdout) {
+    console.log(loredanContent);
     return;
   }
 
-  await writeFile(filePath, content, 'utf-8');
+  await mkdir(targets.loredanDir, { recursive: true });
+
+  const loredanWrite = await writeManagedFile(targets.loredanFile, loredanContent, forceLoredan);
+  const revisionsWrite = await writeManagedFile(targets.revisionsFile, revisionsContent, forceRevisions);
+
+  console.log(dim('  Setting up periodic check-in...'));
+  const heartbeatResult = await ensureHeartbeatDirective(targets.workspace, forceHeartbeat);
+
+  console.log(dim('  Ensuring AGENTS.md operational directives...'));
+  const agentsResult = await ensureAgentsDirective(targets.workspace, forceHeartbeat);
+
+  await StateManager.initialize({
+    outboundAutoApprove: false,
+    inboundAutoApprove: false,
+  });
+
+  const {
+    heartbeatStatusLine,
+    heartbeatDetailLine1,
+    heartbeatDetailLine2,
+  } = heartbeatStatusLines(heartbeatResult);
+
+  const agentsStatusLine = agentsResult.status === 'written'
+    ? '✓ Operational directives added to AGENTS.md'
+    : agentsResult.status === 'updated'
+    ? '↻ Operational directives updated in AGENTS.md'
+    : agentsResult.status === 'current'
+    ? '✓ AGENTS.md operational directives are current'
+    : '⚠ AGENTS.md not found in workspace';
+
+  const rendered = await renderTemplate({
+    templateName: 'init-result.md.template',
+    variant: 'success',
+    variables: {
+      leonardoName,
+      humanName,
+      workspace: targets.workspace,
+      workspaceSource: formatWorkspaceSource(targets.source),
+      loredanMdPath: targets.loredanFile,
+      revisionsPath: targets.revisionsFile,
+      loredanWriteStatus: loredanWrite === 'written' ? '✅' : '↷',
+      revisionsWriteStatus: revisionsWrite === 'written' ? '✅' : '↷',
+      stateWriteStatus: '✅',
+      heartbeatStatusLine,
+      heartbeatDetailLine1,
+      heartbeatDetailLine2,
+    },
+  });
 
   console.log('');
-  if (profile) {
-    console.log(green('  Initialized!'));
-    console.log(`  ${bold('LOREDAN.md')} created for ${cyan(profile.leonardoName)}`);
-    if (profile.humanName) {
-      console.log(`  Synced with ${profile.humanName}`);
-    }
-  } else {
-    console.log(yellow('  Initialized (unclaimed)'));
-    console.log(`  ${bold('LOREDAN.md')} created — run ${cyan('loredan claim')} to personalize`);
-  }
-  console.log(`  ${dim(filePath)}`);
+  process.stdout.write(rendered);
   console.log('');
+
+  if ([loredanWrite, revisionsWrite].includes('skipped')) {
+    console.log(yellow('Existing managed files were preserved (use --force-loredan-md or --force-revisions to overwrite).'));
+    console.log('');
+  }
 }

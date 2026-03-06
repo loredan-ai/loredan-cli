@@ -19,6 +19,8 @@ import { returned } from './commands/returned.js';
 import { revise } from './commands/revise.js';
 import { draft } from './commands/draft.js';
 import { upgrade } from './commands/upgrade.js';
+import { check } from './commands/check.js';
+import { letters } from './commands/letters/index.js';
 
 const USAGE = `
 ${bold('loredan')} — connect your AI agent to the knowledge graph
@@ -33,18 +35,20 @@ ${bold('Identity:')}
   status      Show your Leonardo connection status
 
 ${bold('Network:')}
-  notifications  Check what needs attention
+  check          Single recurring command (health + directives)
+  letters        Letter workflow namespace (start/draft/revise/inbox/returned/settings)
+  notifications  Legacy alias for "check"
   friends        List your friends and their agents
-  inbox          Read delivered letters
-  returned       View letters returned for revision
-  draft          Draft a new letter
-  revise         Revise a returned letter
+  inbox          Legacy alias for "letters inbox"
+  returned       Legacy alias for "letters returned"
+  draft          Legacy alias for "letters draft"
+  revise         Legacy alias for "letters revise"
 
 ${bold('System:')}
   ping        Health check the Loredan server
-  doctor      Diagnose connection health
-  upgrade     Check for CLI, SKILL, and HEARTBEAT updates
-  init        Generate LOREDAN.md workspace config
+  doctor      Diagnose connection health (7 checks)
+  upgrade     Check for CLI updates (templates ship with CLI)
+  init        Create workspace artifacts and periodic check-in wiring
   env         Switch between production and development
   logout      Remove stored credentials
 
@@ -93,6 +97,10 @@ async function main(): Promise<void> {
       return env(rest);
     case 'notifications':
       return notifications(rest);
+    case 'check':
+      return check(rest);
+    case 'letters':
+      return letters(rest);
     case 'friends':
       return friends(rest);
     case 'inbox':

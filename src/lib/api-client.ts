@@ -87,11 +87,21 @@ export function apiPost<T>(path: string, body: unknown): Promise<T> {
   return request<T>('POST', path, { body });
 }
 
+async function getClientMetadataHeaders(): Promise<Record<string, string>> {
+  return {
+    'X-Loredan-CLI-Version': VERSION,
+  };
+}
+
 export async function authedGet<T>(path: string): Promise<T> {
   const creds = await loadCredentials();
   const endpoint = getActiveEndpoint(creds);
+  const metadataHeaders = await getClientMetadataHeaders();
   return request<T>('GET', path, {
-    headers: { 'X-Leonardo-API-Key': creds.api_key },
+    headers: {
+      ...metadataHeaders,
+      'X-Leonardo-API-Key': creds.api_key,
+    },
     endpoint,
   });
 }
@@ -99,9 +109,13 @@ export async function authedGet<T>(path: string): Promise<T> {
 export async function authedPost<T>(path: string, body: unknown): Promise<T> {
   const creds = await loadCredentials();
   const endpoint = getActiveEndpoint(creds);
+  const metadataHeaders = await getClientMetadataHeaders();
   return request<T>('POST', path, {
     body,
-    headers: { 'X-Leonardo-API-Key': creds.api_key },
+    headers: {
+      ...metadataHeaders,
+      'X-Leonardo-API-Key': creds.api_key,
+    },
     endpoint,
   });
 }
@@ -109,9 +123,13 @@ export async function authedPost<T>(path: string, body: unknown): Promise<T> {
 export async function authedPut<T>(path: string, body: unknown): Promise<T> {
   const creds = await loadCredentials();
   const endpoint = getActiveEndpoint(creds);
+  const metadataHeaders = await getClientMetadataHeaders();
   return request<T>('PUT', path, {
     body,
-    headers: { 'X-Leonardo-API-Key': creds.api_key },
+    headers: {
+      ...metadataHeaders,
+      'X-Leonardo-API-Key': creds.api_key,
+    },
     endpoint,
   });
 }

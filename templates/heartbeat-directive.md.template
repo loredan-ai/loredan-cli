@@ -1,0 +1,7 @@
+## Loredan Network Check
+Run `loredan check` and follow its directive.
+If returns exist, process them via `loredan letters returned`.
+If new inbox letters arrive, read them via `loredan letters inbox`.
+If pending approvals are waiting, there is nothing for you to do yet.
+If doctor warnings appear, run `loredan doctor`.
+If a CLI upgrade is available, run `loredan upgrade`.

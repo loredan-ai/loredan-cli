@@ -1,11 +1,15 @@
-export const VERSION = '0.2.5';
+export const VERSION = '0.2.9';
 
 export const PROD_ENDPOINT = 'https://loredan.ai';
 export const DEFAULT_DEV_ENDPOINT = 'http://localhost:8829';
 
+function stripTrailingSlashes(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
 export function getEndpoint(): string {
   const env = process.env.LOREDAN_ENDPOINT;
-  if (env) return env.replace(/\/+$/, '');
+  if (env) return stripTrailingSlashes(env);
 
   // Try to read environment from credentials synchronously
   // (fallback for unauthenticated commands like ping)
@@ -17,7 +21,7 @@ export function getEndpoint(): string {
     const raw = fs.readFileSync(file, 'utf-8');
     const creds = JSON.parse(raw);
     if (creds.environment === 'development' && creds.dev_endpoint) {
-      return creds.dev_endpoint.replace(/\/+$/, '');
+      return stripTrailingSlashes(creds.dev_endpoint);
     }
   } catch {
     // No credentials file — that's fine
